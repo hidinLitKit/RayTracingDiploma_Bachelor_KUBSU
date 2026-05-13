@@ -1,0 +1,80 @@
+#include "ShadowsPayload.hlsl"
+
+#pragma shader_feature_local _NORMALMAP
+#pragma shader_feature_local_fragment _ALPHATEST_ON
+#pragma shader_feature_local_fragment _ALPHAPREMULTIPLY_ON
+#pragma shader_feature_local_fragment _EMISSION
+#pragma shader_feature_local_fragment _METALLICSPECGLOSSMAP
+#pragma shader_feature_local_fragment _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
+#pragma shader_feature_local_fragment _OCCLUSIONMAP
+#pragma shader_feature_local _PARALLAXMAP
+#pragma shader_feature_local _ _DETAIL_MULX2 _DETAIL_SCALED
+#pragma shader_feature_local_fragment _SPECULARHIGHLIGHTS_OFF
+#pragma shader_feature_local_fragment _ENVIRONMENTREFLECTIONS_OFF
+#pragma shader_feature_local_fragment _SPECULAR_SETUP
+#pragma shader_feature_local _RECEIVE_SHADOWS_OFF
+#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
+#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
+#pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+#pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
+#pragma multi_compile_fragment _ _SHADOWS_SOFT
+#pragma multi_compile _ LIGHTMAP_SHADOW_MIXING
+#pragma multi_compile _ SHADOWS_SHADOWMASK
+#pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
+#pragma multi_compile _ DIRLIGHTMAP_COMBINED
+#pragma multi_compile _ LIGHTMAP_ON
+#pragma multi_compile_fog
+
+Texture2D _BaseMap;
+SamplerState sampler_BaseMap;
+float4 _BaseMap_ST;
+
+float4 _BaseColor;
+
+#if defined(_ALPHATEST_ON)
+float _Cutoff;
+#endif
+
+[shader("closesthit")]
+void ClosestHit_Shadows(inout ShadowsPayload payload : SV_RayPayload, AttributeData attributes : SV_IntersectionAttributes)
+{
+	Vertex v0, v1, v2;
+	GetVertexData(v0, v1, v2);
+
+	float2 barycentrics = attributes.barycentrics;
+	float3 barycentricCoords = float3(1.0 - barycentrics.x - barycentrics.y, barycentrics.x, barycentrics.y);
+	float3 normal = INTERPOLATE_RAYTRACING_ATTRIBUTE(v0.normal, v1.normal, v2.normal, barycentricCoords);
+	float2 texcoord = INTERPOLATE_RAYTRACING_ATTRIBUTE(v0.texcoord, v1.texcoord, v2.texcoord, barycentricCoords);
+
+#ifdef RAYTRACEPROCEDURAL
+	normal = attributes.normalOS;
+#endif
+
+	float2 uvMainTex = TRANSFORM_TEX(texcoord, _BaseMap);
+	float4 color = _BaseMap.SampleLevel(sampler_BaseMap, uvMainTex, 0) * _BaseColor;
+
+	float3 worldPosition = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+
+	if (payload.rayType == 1.0)
+	{
+#if defined(_ALPHATEST_ON)
+		float alpha = step(_Cutoff, color.a);
+#elif defined(_ALPHABLEND_ON) || defined(_ALPHAPREMULTIPLY_ON)
+		float alpha = color.a;
+#else
+		float alpha = 1.0;
+#endif
+
+		float distanceTraveled = RayTCurrent();
+		float scaleShadow = payload.rayIntensity * alpha;
+		payload.light -= scaleShadow;
+		return;
+	}
+
+	float3 worldNormal = mul(normal, (float3x3) WorldToObject3x4());
+
+	float3 rayPosition = WorldRayOrigin() + WorldRayDirection() * RayTCurrent() + worldNormal * _RtShadowBias;
+	float3 rayDirection = normalize(_MainLightPosition.xyz);
+
+	Cast(rayPosition, rayDirection, payload);
+}

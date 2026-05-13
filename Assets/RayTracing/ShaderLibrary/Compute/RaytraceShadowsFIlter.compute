@@ -1,0 +1,114 @@
+#pragma kernel SoftShadows
+#pragma kernel HardShadows
+
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+TEXTURE2D(_CameraDepthTexture);
+Texture2D<float> _ShadowmapTemp;
+RWTexture2D<float> _ShadowMap;
+	
+SamplerComparisonState _LinearClampCompare;
+SamplerState _LinearClamp;
+
+float4 _ShadowmapTemp_TexelSize;
+
+float _ShadowStrength;
+int _TextureWidth;
+int _TextureHeight;
+
+float SampleShadowMap(uint2 uv)
+{
+	// float2 uvf = float2(uv * _ShadowmapTemp_TexelSize.zw);
+	// float depth = _ShadowmapTemp.SampleLevel(_LinearClamp, uvf, 0).r;
+	// return depth; 
+
+	uv.x = clamp(uv.x, 1, _TextureWidth - 2);
+	uv.y = clamp(uv.y, 1, _TextureHeight - 2);
+
+
+	return _ShadowmapTemp[uv];
+}
+
+float SampleShadowDummy(float3 uv)
+{
+	return 1.0;
+}
+
+float SampleShadowMap_3x3(int2 uv)
+{
+	float shadow = 1;
+
+	shadow = 0;
+	shadow += SampleShadowMap(uv + int2(-1, -1));
+	shadow += SampleShadowMap(uv + int2(0, -1));
+	shadow += SampleShadowMap(uv + int2(1, -1));
+	shadow += SampleShadowMap(uv + int2(-1, 0));
+	shadow += SampleShadowMap(uv + int2(0, 0));
+	shadow += SampleShadowMap(uv + int2(1, 0));
+	shadow += SampleShadowMap(uv + int2(-1, 1));
+	shadow += SampleShadowMap(uv + int2(0, 1));
+	shadow += SampleShadowMap(uv + int2(1, 1));
+	shadow /= 9.0;
+
+	return shadow;
+}
+
+float SampleShadowMap_Variable(int2 uv)
+{
+	// increase this value for more expensive shadow filtering
+	const int iwidth = 4; 
+
+	float shadow = 0.0;
+	float counter = 0;
+
+	for (int x = -iwidth; x <= iwidth; ++x)
+	for (int y = -iwidth; y <= iwidth; ++y)
+	{
+		counter++;
+		shadow += SampleShadowMap(uv + int2(x, y));
+	}
+
+	shadow /= counter;
+
+	return shadow;
+}
+
+[numthreads(32, 32, 1)]
+void SoftShadows(int3 id : SV_DispatchThreadID)
+{
+	// bounds check :( 
+	if (id.x >= _TextureWidth || id.y >= _TextureHeight)
+	{
+		return;
+	}
+
+	float shadows = SampleShadowMap_Variable(id.xy
+		#ifdef UNITY_STEREO_INSTANCING_ENABLED
+		,XR_VIEW_INDEX
+		#endif
+	);
+
+	shadows = 1.0 - shadows;
+	shadows *= _ShadowStrength;
+	shadows = 1.0 - shadows; 
+
+	_ShadowMap[id.xy] = shadows;
+}
+
+[numthreads(32, 32, 1)]
+void HardShadows(int3 id : SV_DispatchThreadID)
+{
+	if (id.x >= _TextureWidth || id.y >= _TextureHeight)
+	{
+		return;
+	}
+
+	int2 uv = id.xy;
+	float shadows = SampleShadowMap(uv);
+
+	shadows = 1.0 - shadows;
+	shadows *= _ShadowStrength;
+	shadows = 1.0 - shadows;
+
+	_ShadowMap[id.xy] = shadows;
+}
