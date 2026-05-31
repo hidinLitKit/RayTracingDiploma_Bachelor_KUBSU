@@ -71,7 +71,7 @@ MonoBehaviour:
   m_Active: 1
   settings:
     rayTraceConfig: {fileID: 11400000, guid: b263747ab31349f42ab2d1da0dcc5b04, type: 2}
-    rayFlags: 16
+    rayFlags: 0
     raySpawnScale: 1
     maxRayDistance: 100
   renderPassEvent: 250
@@ -96,14 +96,14 @@ MonoBehaviour:
   renderPassEvent: 250
   raytraceShadowsSettings:
     rayTraceConfig: {fileID: 11400000, guid: b263747ab31349f42ab2d1da0dcc5b04, type: 2}
-    rayFlags: 4
-    raySpawnScale: 1
+    rayFlags: 20
+    raySpawnScale: 2
     maxRayDistance: 1000
     shadowBias: 0
     shadowStrength: 1
     shadowRaySeparation: 0.01
-    shadowCastCount: 32
+    shadowCastCount: 16
     smoothShadows: 1
     lightAngularRadius: 1.76
-    pcssMaxRadius: 32
-    pcssDepthRejection: 0.005
+    pcssMaxRadius: 16
+    pcssDepthRejection: 0.053

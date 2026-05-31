@@ -30,10 +30,34 @@ SamplerState sampler_BaseMap;
 float4 _BaseMap_ST;
 
 float4 _BaseColor;
-
-#if defined(_ALPHATEST_ON)
 float _Cutoff;
-#endif
+float _AlphaClip;
+
+float GetRaytracedSurfaceAlpha(AttributeData attributes)
+{
+	Vertex v0, v1, v2;
+	GetVertexData(v0, v1, v2);
+
+	float2 barycentrics = attributes.barycentrics;
+	float3 barycentricCoords = float3(1.0 - barycentrics.x - barycentrics.y, barycentrics.x, barycentrics.y);
+	float2 texcoord = INTERPOLATE_RAYTRACING_ATTRIBUTE(v0.texcoord, v1.texcoord, v2.texcoord, barycentricCoords);
+
+	float2 uvMainTex = TRANSFORM_TEX(texcoord, _BaseMap);
+	return _BaseMap.SampleLevel(sampler_BaseMap, uvMainTex, 0).a * _BaseColor.a;
+}
+
+[shader("anyhit")]
+void AnyHit_Shadows(inout ShadowsPayload payload : SV_RayPayload, AttributeData attributes : SV_IntersectionAttributes)
+{
+	if (_AlphaClip > 0.5)
+	{
+		float alpha = GetRaytracedSurfaceAlpha(attributes);
+		if (alpha < _Cutoff)
+		{
+			IgnoreHit();
+		}
+	}
+}
 
 [shader("closesthit")]
 void ClosestHit_Shadows(inout ShadowsPayload payload : SV_RayPayload, AttributeData attributes : SV_IntersectionAttributes)
@@ -62,13 +86,11 @@ void ClosestHit_Shadows(inout ShadowsPayload payload : SV_RayPayload, AttributeD
 
 	if (payload.rayType == 1.0)
 	{
-#if defined(_ALPHATEST_ON)
-		float alpha = step(_Cutoff, color.a);
-#elif defined(_ALPHABLEND_ON) || defined(_ALPHAPREMULTIPLY_ON)
-		float alpha = color.a;
-#else
 		float alpha = 1.0;
-#endif
+		if (_AlphaClip > 0.5)
+		{
+			alpha = step(_Cutoff, color.a);
+		}
 
 		// Opacity-weighted: transparent fragments let part of the light through ...
 		payload.light += payload.rayIntensity * (1.0 - alpha);
