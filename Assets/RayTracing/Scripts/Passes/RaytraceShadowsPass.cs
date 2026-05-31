@@ -12,6 +12,11 @@ public class RaytraceShadowsPass : RaytracePassBase
 		public static readonly int ShadowCastCount = Shader.PropertyToID("_ShadowCastCount");
 		public static readonly int RaySeparation = Shader.PropertyToID("_RaySeparation");
 
+		public static readonly int LightAngularRadius = Shader.PropertyToID("_LightAngularRadius");
+		public static readonly int ProjScaleY = Shader.PropertyToID("_ProjScaleY");
+		public static readonly int PcssMaxRadius = Shader.PropertyToID("_PcssMaxRadius");
+		public static readonly int DepthRejectScale = Shader.PropertyToID("_DepthRejectScale");
+
 		public static readonly int ShadowStrength = Shader.PropertyToID("_ShadowStrength");
 		public static readonly int TextureWidth = Shader.PropertyToID("_TextureWidth");
 		public static readonly int TextureHeight = Shader.PropertyToID("_TextureHeight");
@@ -51,8 +56,9 @@ public class RaytraceShadowsPass : RaytracePassBase
 	{
 		var desc = base.GetRTDesc(cameraData);
 
-		desc.colorFormat = RenderTextureFormat.RFloat;
-		desc.graphicsFormat = GraphicsFormat.R32_SFloat;
+		// R = visibility, G = penumbra radius (pixels), B = view depth (bilateral blur).
+		desc.colorFormat = RenderTextureFormat.ARGBFloat;
+		desc.graphicsFormat = GraphicsFormat.R32G32B32A32_SFloat;
 		desc.enableRandomWrite = true;
 		desc.msaaSamples = 1;
 		desc.depthBufferBits = 0;
@@ -73,24 +79,41 @@ public class RaytraceShadowsPass : RaytracePassBase
 			passData.floatParams.x = shadowSettings.shadowBias;
 			passData.floatParams.y = shadowSettings.shadowRaySeparation;
 			passData.floatParams.z = shadowSettings.shadowStrength;
+			passData.floatParams.w = shadowSettings.lightAngularRadius * Mathf.Deg2Rad;
 			passData.intParams.x = shadowSettings.shadowCastCount;
+			passData.intParams.y = shadowSettings.pcssMaxRadius;
+			passData.floatParams1.x = shadowSettings.pcssDepthRejection;
 			passData.boolParams.x = shadowSettings.smoothShadows;
 			passData.computeShader0 = settings.rayTraceConfig.shadowFilteringCs;
 		}
 
-		TextureHandle resolveShadowTarget = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, "_ShadowMap", false);
+		// Resolved/filtered shadow map stays single-channel
+		var resolveDesc = desc;
+		resolveDesc.colorFormat = RenderTextureFormat.RFloat;
+		resolveDesc.graphicsFormat = GraphicsFormat.R32_SFloat;
+
+		TextureHandle resolveShadowTarget = UniversalRenderer.CreateRenderGraphTexture(renderGraph, resolveDesc, "_ShadowMap", false);
 		passData.extraTarget0 = resolveShadowTarget;
 		builder.UseTexture(passData.extraTarget0, AccessFlags.Write);
+		// Deliver the shadow through a dedicated channel sampled by our custom Lit
+		// pass (RtLitForwardPass.hlsl). We no longer hijack the SSAO texture, so the
+		// shadow affects only the main directional light and never the ambient term.
 		builder.SetGlobalTextureAfterPass(resolveShadowTarget, LocalPropertyRegistryIDs.RaytracingShadowMap);
-		builder.SetGlobalTextureAfterPass(resolveShadowTarget, LocalPropertyRegistryIDs.ScreenSpaceOcclusionTexture);
 	}
 
 	protected override void ConfigureCustomRaytraceCommands(UnsafeCommandBuffer cmd, PassData data)
 	{
 		base.ConfigureCustomRaytraceCommands(cmd, data);
-		cmd.SetRayTracingFloatParam(data.shader, LocalPropertyRegistryIDs.ShadowBias, data.floatParams.x);
-		cmd.SetRayTracingFloatParam(data.shader, LocalPropertyRegistryIDs.RaySeparation, data.floatParams.y);
-		cmd.SetRayTracingIntParam(data.shader, LocalPropertyRegistryIDs.ShadowCastCount, data.intParams.x);
+		cmd.SetGlobalFloat(LocalPropertyRegistryIDs.ShadowBias, data.floatParams.x);
+		cmd.SetGlobalFloat(LocalPropertyRegistryIDs.RaySeparation, data.floatParams.y);
+		cmd.SetGlobalInt(LocalPropertyRegistryIDs.ShadowCastCount, data.intParams.x);
+
+		// PCSS: light cone half-angle + world->pixel projection scale (fovY based).
+		cmd.SetGlobalFloat(LocalPropertyRegistryIDs.LightAngularRadius, data.floatParams.w);
+
+		float fovYRad = data.camera.fieldOfView * Mathf.Deg2Rad;
+		float projScaleY = data.height / (2.0f * Mathf.Tan(fovYRad * 0.5f));
+		cmd.SetGlobalFloat(LocalPropertyRegistryIDs.ProjScaleY, projScaleY);
 		//cmd.DisableKeyword(LocalPropertyRegistryIDs.HAS_DEPTH_NORMALS);
 	}
 
@@ -101,13 +124,13 @@ public class RaytraceShadowsPass : RaytracePassBase
 		cmd.SetComputeFloatParam(data.computeShader0, LocalPropertyRegistryIDs.ShadowStrength, data.floatParams.z);
 		cmd.SetComputeIntParam(data.computeShader0, LocalPropertyRegistryIDs.TextureWidth, data.width);
 		cmd.SetComputeIntParam(data.computeShader0, LocalPropertyRegistryIDs.TextureHeight, data.height);
+		cmd.SetComputeIntParam(data.computeShader0, LocalPropertyRegistryIDs.PcssMaxRadius, Mathf.Max(1, data.intParams.y));
+		cmd.SetComputeFloatParam(data.computeShader0, LocalPropertyRegistryIDs.DepthRejectScale, data.floatParams1.x);
 		cmd.SetComputeTextureParam(data.computeShader0, kernel, LocalPropertyRegistryIDs.ShadowmapTemp, data.raytraceTarget);
 		cmd.SetComputeTextureParam(data.computeShader0, kernel, LocalPropertyRegistryIDs.ShadowMap, data.extraTarget0);
 
 		int groupsX = Mathf.CeilToInt(data.width / 32.0f);
 		int groupsY = Mathf.CeilToInt(data.height / 32.0f);
 		cmd.DispatchCompute(data.computeShader0, kernel, groupsX, groupsY, 1);
-
-		cmd.EnableKeyword(LocalPropertyRegistryIDs.SCREEN_SPACE_OCCLUSION);
 	}
 }

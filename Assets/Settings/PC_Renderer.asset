@@ -1,31 +1,5 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-3358969716719370749
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f62c9c65cf3354c93be831c8bc075510, type: 3}
-  m_Name: ScreenSpaceAmbientOcclusion
-  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.ScreenSpaceAmbientOcclusion
-  m_Active: 1
-  m_Settings:
-    AOMethod: 0
-    Downsample: 0
-    AfterOpaque: 0
-    Source: 1
-    NormalSamples: 1
-    Intensity: 3
-    DirectLightingStrength: 0.25
-    Radius: 0.035
-    Samples: 1
-    BlurQuality: 0
-    Falloff: 100
-    SampleCount: -1
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -53,8 +27,7 @@ MonoBehaviour:
   m_RendererFeatures:
   - {fileID: 4916881156811222046}
   - {fileID: 8707392628900983197}
-  - {fileID: -3358969716719370749}
-  m_RendererFeatureMap: 1e6c8b825c453c449d717f5576dfd67803bea5d7d68a62d1
+  m_RendererFeatureMap: 1e6c8b825c453c449d717f5576dfd678
   m_UseNativeRenderPass: 1
   xrSystemData: {fileID: 0}
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
@@ -117,18 +90,20 @@ MonoBehaviour:
   m_Active: 1
   settings:
     rayTraceConfig: {fileID: 11400000, guid: b263747ab31349f42ab2d1da0dcc5b04, type: 2}
-    rayFlags: 16
+    rayFlags: 0
     raySpawnScale: 1
-    maxRayDistance: 100
+    maxRayDistance: 85
   renderPassEvent: 250
   raytraceShadowsSettings:
     rayTraceConfig: {fileID: 11400000, guid: b263747ab31349f42ab2d1da0dcc5b04, type: 2}
-    rayFlags: 16
+    rayFlags: 4
     raySpawnScale: 1
-    maxRayDistance: 100
-    shadowBias: 0.001
+    maxRayDistance: 1000
+    shadowBias: 0
     shadowStrength: 1
-    shadowRaySeparation: 0.001
-    shadowCastCount: 16
-    shadowColor: {r: 0, g: 0, b: 0, a: 1}
+    shadowRaySeparation: 0.01
+    shadowCastCount: 32
     smoothShadows: 1
+    lightAngularRadius: 1.76
+    pcssMaxRadius: 32
+    pcssDepthRejection: 0.005

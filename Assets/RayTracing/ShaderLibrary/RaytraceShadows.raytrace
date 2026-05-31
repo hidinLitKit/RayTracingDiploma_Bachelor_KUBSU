@@ -6,7 +6,7 @@
 
 #define IS_URP_RTX 1
 
-RWTexture2D<float> _RenderTarget;
+RWTexture2D<float4> _RenderTarget; // R = visibility, G = penumbra (pixels), B = view depth
 SamplerState _LinearClamp;
 float4x4 _CameraToWorldMatrix;
 
@@ -36,10 +36,14 @@ void ShadowRayGeneration()
 	payload.light = 1.0;
 	payload.rayIntensity = 1.0;
 	payload.rayType = 0.0;
+	payload.blockerDistSum = 0.0;
+	payload.blockerCount = 0.0;
+	payload.penumbra = 0.0;
+	payload.viewDepth = 0.0;
 
 	TraceRay(_RaytracingAccelerationStructure, _RayFlags, _RaytraceAgainstLayers, 0, 1, 0, ray, payload);
 
-	_RenderTarget[dispatchId.xy] = saturate(payload.light);
+	_RenderTarget[dispatchId.xy] = float4(saturate(payload.light), max(0.0, payload.penumbra), payload.viewDepth, 0.0);
 }
 
 [shader("miss")]

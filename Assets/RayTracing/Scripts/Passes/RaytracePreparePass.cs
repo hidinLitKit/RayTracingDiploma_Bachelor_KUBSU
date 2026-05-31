@@ -74,7 +74,6 @@ public class RaytracePreparePass : ScriptableRenderPass
 		cmd.SetGlobalMatrix(PropertyRegistryIDs.ViewProjectionMatrix, data.viewProjection);
 		cmd.SetGlobalMatrix(PropertyRegistryIDs.CameraToWorldMatrix, data.cameraToWorld);
 		cmd.SetGlobalVector(PropertyRegistryIDs.WorldSpaceCameraPos, data.worldSpaceCameraPos);
-
 		cmd.SetGlobalInt(PropertyRegistryIDs.RaytraceAgainstLayers, data.raytraceAgainstLayers);
 	}
 }

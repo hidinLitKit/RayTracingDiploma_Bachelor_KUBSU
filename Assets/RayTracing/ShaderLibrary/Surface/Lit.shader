@@ -144,10 +144,10 @@ Shader "Universal Render Pipeline/Lit (with rtx)"
         #pragma multi_compile _ DOTS_INSTANCING_ON
 
         #pragma vertex LitPassVertex
-        #pragma fragment LitPassFragment
+        #pragma fragment LitPassFragmentRT
 
         #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
-        #include "Packages/com.unity.render-pipelines.universal/Shaders/LitForwardPass.hlsl"
+        #include "../Includes/RtLitForwardPass.hlsl"
         ENDHLSL
     }
 
@@ -447,10 +447,10 @@ Shader "Universal Render Pipeline/Lit (with rtx)"
         #pragma multi_compile_fragment _ DEBUG_DISPLAY
 
         #pragma vertex LitPassVertex
-        #pragma fragment LitPassFragment
+        #pragma fragment LitPassFragmentRT
 
         #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
-        #include "Packages/com.unity.render-pipelines.universal/Shaders/LitForwardPass.hlsl"
+        #include "../Includes/RtLitForwardPass.hlsl"
         ENDHLSL
     }
 

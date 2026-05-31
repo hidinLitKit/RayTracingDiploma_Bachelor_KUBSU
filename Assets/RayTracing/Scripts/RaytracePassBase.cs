@@ -41,6 +41,7 @@ public class RaytracePassBase : ScriptableRenderPass
 
 		// Free var slots
 		public float4 floatParams;
+		public float4 floatParams1;
 		public int4 intParams;
 		public bool4 boolParams;
 		public TextureHandle extraTarget0;
@@ -141,10 +142,10 @@ public class RaytracePassBase : ScriptableRenderPass
 
 		nativeCmd.SetRayTracingAccelerationStructure(data.shader, data.accelerationStructureName, data.accelerationStructure);
 
-		nativeCmd.SetRayTracingIntParam(data.shader,PropertyRegistryIDs.RayFlags,data.rayFlags);
-		nativeCmd.SetRayTracingFloatParam(data.shader,PropertyRegistryIDs.MaxRayDistance, data.maxRayDistance);
+		nativeCmd.SetGlobalInt(PropertyRegistryIDs.RayFlags,data.rayFlags);
+		nativeCmd.SetGlobalFloat(PropertyRegistryIDs.MaxRayDistance, data.maxRayDistance);
 		nativeCmd.SetRayTracingShaderPass(data.shader, data.raytracingShaderPassName);
-		nativeCmd.SetRayTracingIntParam(data.shader, PropertyRegistryIDs.TemporallyRendered, data.temporallyRendered);
+		nativeCmd.SetGlobalInt(PropertyRegistryIDs.TemporallyRendered, data.temporallyRendered);
 
 		nativeCmd.SetRayTracingTextureParam(data.shader, PropertyRegistryIDs.RenderTarget, data.raytraceTarget);
 	}

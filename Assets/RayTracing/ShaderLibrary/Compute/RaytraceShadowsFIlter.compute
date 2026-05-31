@@ -4,9 +4,9 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
 TEXTURE2D(_CameraDepthTexture);
-Texture2D<float> _ShadowmapTemp;
+Texture2D<float4> _ShadowmapTemp; // R = visibility, G = penumbra (pixels), B = view depth
 RWTexture2D<float> _ShadowMap;
-	
+
 SamplerComparisonState _LinearClampCompare;
 SamplerState _LinearClamp;
 
@@ -15,18 +15,31 @@ float4 _ShadowmapTemp_TexelSize;
 float _ShadowStrength;
 int _TextureWidth;
 int _TextureHeight;
+int _PcssMaxRadius;
+float _DepthRejectScale;  // bilateral: reject taps whose depth differs by > scale * centerDepth
 
 float SampleShadowMap(uint2 uv)
 {
-	// float2 uvf = float2(uv * _ShadowmapTemp_TexelSize.zw);
-	// float depth = _ShadowmapTemp.SampleLevel(_LinearClamp, uvf, 0).r;
-	// return depth; 
-
 	uv.x = clamp(uv.x, 1, _TextureWidth - 2);
 	uv.y = clamp(uv.y, 1, _TextureHeight - 2);
 
+	return _ShadowmapTemp[uv].r;
+}
 
-	return _ShadowmapTemp[uv];
+float SamplePenumbra(uint2 uv)
+{
+	uv.x = clamp(uv.x, 1, _TextureWidth - 2);
+	uv.y = clamp(uv.y, 1, _TextureHeight - 2);
+
+	return _ShadowmapTemp[uv].g;
+}
+
+float SampleDepth(uint2 uv)
+{
+	uv.x = clamp(uv.x, 1, _TextureWidth - 2);
+	uv.y = clamp(uv.y, 1, _TextureHeight - 2);
+
+	return _ShadowmapTemp[uv].b;
 }
 
 float SampleShadowDummy(float3 uv)
@@ -53,22 +66,43 @@ float SampleShadowMap_3x3(int2 uv)
 	return shadow;
 }
 
+// PCSS PCF: kernel radius is driven per-pixel by the estimated penumbra width,
+// with a bilateral (depth-aware) weight so the blur does not bleed across
+// geometry edges / object-ground intersections.
 float SampleShadowMap_Variable(int2 uv)
 {
-	// increase this value for more expensive shadow filtering
-	const int iwidth = 4; 
+	// Penumbra radius (pixels) estimated by the ray-traced blocker search.
+	float penumbra = SamplePenumbra(uv);
+	int iwidth = clamp((int)round(penumbra), 1, _PcssMaxRadius);
+
+	float centerDepth = SampleDepth(uv);
+	// Allowed depth difference scales with distance (depth precision is relative).
+	float depthTolerance = max(1e-4, _DepthRejectScale * centerDepth);
 
 	float shadow = 0.0;
-	float counter = 0;
+	float counter = 0.0;
 
 	for (int x = -iwidth; x <= iwidth; ++x)
 	for (int y = -iwidth; y <= iwidth; ++y)
 	{
-		counter++;
-		shadow += SampleShadowMap(uv + int2(x, y));
+		// Round kernel
+		if (x * x + y * y > iwidth * iwidth)
+		{
+			continue;
+		}
+
+		int2 tap = uv + int2(x, y);
+
+		// Bilateral weight: drop taps lying on a different surface (depth jump).
+		float tapDepth = SampleDepth(tap);
+		float w = saturate(1.0 - abs(tapDepth - centerDepth) / depthTolerance);
+
+		shadow += w * SampleShadowMap(tap);
+		counter += w;
 	}
 
-	shadow /= counter;
+	// Center tap always contributes (w == 1) so counter is never zero.
+	shadow /= max(1.0, counter);
 
 	return shadow;
 }
@@ -76,7 +110,6 @@ float SampleShadowMap_Variable(int2 uv)
 [numthreads(32, 32, 1)]
 void SoftShadows(int3 id : SV_DispatchThreadID)
 {
-	// bounds check :( 
 	if (id.x >= _TextureWidth || id.y >= _TextureHeight)
 	{
 		return;
