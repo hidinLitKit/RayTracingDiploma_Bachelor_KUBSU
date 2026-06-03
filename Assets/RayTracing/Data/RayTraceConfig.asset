@@ -12,6 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: baaf5125cba758344b82baeb256d34bd, type: 3}
   m_Name: RayTraceConfig
   m_EditorClassIdentifier: Assembly-CSharp::RaytraceConfig
-  blitMaterial: {fileID: 2100000, guid: 86fa116e0a6090e47ac2ae964b6bf774, type: 2}
   shadowRayTracingShader: {fileID: 4807578003741378534, guid: 20b75137bf1cb384aa16a32e6699e972, type: 3}
   shadowFilteringCs: {fileID: 7200000, guid: 730ce84919dd7524496688e5ff330c54, type: 3}
+  reflectionRayTracingShader: {fileID: 4807578003741378534, guid: e124b4167cd720d4aaf659a3718ba6be, type: 3}
+  reflectionApplyMaterial: {fileID: 2100000, guid: d0f180468df112e42865f8c438b6215a, type: 2}
+  fallbackSkybox: {fileID: 8900000, guid: 8a293ce833d584fc98516e0e74f495a4, type: 3}

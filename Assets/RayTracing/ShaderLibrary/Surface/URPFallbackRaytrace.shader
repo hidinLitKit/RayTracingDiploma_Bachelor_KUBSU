@@ -16,6 +16,18 @@
             ENDHLSL
         }
 
+        Pass
+        {
+            Name "RaytraceReflectionPass"
+
+            HLSLPROGRAM
+
+            #pragma raytracing URP_ClosestHit
+            #include "../Includes/RaytraceReflectionHitPass.hlsl"
+
+            ENDHLSL
+        }
+
 
     }
 

@@ -7,4 +7,9 @@ public class RaytraceConfig : ScriptableObject
 	[Header("Shadows Data")]
 	public RayTracingShader shadowRayTracingShader;
 	public ComputeShader shadowFilteringCs;
+
+	[Header("Reflections Data")]
+	public RayTracingShader reflectionRayTracingShader;
+	public Material reflectionApplyMaterial;
+	public Texture fallbackSkybox;
 }

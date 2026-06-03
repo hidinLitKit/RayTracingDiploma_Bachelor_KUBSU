@@ -111,21 +111,11 @@ void ClosestHit_Shadows(inout ShadowsPayload payload : SV_RayPayload, AttributeD
 	float receiverDist = distance(worldPosition, _WorldSpaceCameraPos);
 	payload.viewDepth = receiverDist;
 
-	// Orient the geometric normal toward the camera so it matches the visible
-	// (front-facing) surface, regardless of triangle winding.
+	// Orient the geometric normal toward the camera so the bias offset pushes the
+	// shadow-ray origin off the visible surface, regardless of triangle winding.
 	if (dot(geometricNormalWS, WorldRayDirection()) > 0.0)
 	{
 		geometricNormalWS = -geometricNormalWS;
-	}
-
-	// N.L gate: a surface facing away from the light is already dark from the
-	// diffuse term in the lighting model.
-	// Report "fully lit" for the shadow buffer and let N.L do the shading.
-	if (dot(geometricNormalWS, rayDirection) <= 0.0)
-	{
-		payload.light = 1.0;
-		payload.penumbra = 0.0;
-		return;
 	}
 
 	float3 rayPosition = worldPosition + geometricNormalWS * _RtShadowBias;

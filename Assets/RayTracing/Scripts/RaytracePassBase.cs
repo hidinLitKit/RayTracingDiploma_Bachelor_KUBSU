@@ -46,6 +46,8 @@ public class RaytracePassBase : ScriptableRenderPass
 		public bool4 boolParams;
 		public TextureHandle extraTarget0;
 		public ComputeShader computeShader0;
+		public Material material0;
+		public Texture texture0;
 	}
 
 	public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameContext)

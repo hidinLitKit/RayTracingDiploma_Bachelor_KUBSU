@@ -88,7 +88,7 @@ inline float Cast(float3 rayOrigin, float3 rayDirection, inout ShadowsPayload pa
 		}
 
 		ShadowsPayload shadowsPayload = payload;
-		TraceRay(_RaytracingAccelerationStructure, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, _RaytraceAgainstLayers, 0, 1, 0, ray, shadowsPayload);
+		TraceRay(_RaytracingAccelerationStructure, RAY_FLAG_NONE, _RaytraceAgainstLayers, 0, 1, 0, ray, shadowsPayload);
 		payload = shadowsPayload;
 	}
 
