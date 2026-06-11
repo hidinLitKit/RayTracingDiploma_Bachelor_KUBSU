@@ -42,12 +42,20 @@ public class RaytracePassBase : ScriptableRenderPass
 		// Free var slots
 		public float4 floatParams;
 		public float4 floatParams1;
+		public float4 floatParams2;
 		public int4 intParams;
 		public bool4 boolParams;
 		public TextureHandle extraTarget0;
+		public TextureHandle extraTarget1;
+		public TextureHandle extraTarget2; // temporal history (read)
+		public TextureHandle extraTarget3; // temporal history (write / accumulated)
+		public TextureHandle extraTarget4; // free slot (reflection reprojection aux)
+		public TextureHandle extraTarget5; // free slot (reflection resolved composite source)
 		public ComputeShader computeShader0;
+		public ComputeShader computeShader1; // temporal resolve
 		public Material material0;
 		public Texture texture0;
+		public TextureHandle depthTexture;
 	}
 
 	public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameContext)

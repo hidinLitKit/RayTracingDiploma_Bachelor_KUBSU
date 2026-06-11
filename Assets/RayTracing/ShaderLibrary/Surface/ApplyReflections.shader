@@ -1,80 +1,108 @@
 Shader "Hidden/Akunaki/ApplyReflections"
 {
-    SubShader
-    {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
-        Cull Off
-        ZWrite Off
-        ZTest Always
+	SubShader
+	{
+		Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
+		Cull Off
+		ZWrite Off
+		ZTest Always
+	
+		HLSLINCLUDE
+		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 
-        HLSLINCLUDE
-        #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+		struct Varyings
+		{
+			float4 positionCS : SV_POSITION;
+			float2 uv : TEXCOORD0;
+		};
 
-        struct Varyings
-        {
-            float4 positionCS : SV_POSITION;
-            float2 uv : TEXCOORD0;
-        };
+		Varyings Vert(uint vertexID : SV_VertexID)
+		{
+			Varyings o;
+			o.positionCS = GetFullScreenTriangleVertexPosition(vertexID);
+			o.uv = GetFullScreenTriangleTexCoord(vertexID);
+			return o;
+		}
+		ENDHLSL
 
-        Varyings Vert(uint vertexID : SV_VertexID)
-        {
-            Varyings o;
-            o.positionCS = GetFullScreenTriangleVertexPosition(vertexID);
-            o.uv = GetFullScreenTriangleTexCoord(vertexID);
-            return o;
-        }
-        ENDHLSL
+		// Pass 0 - Grab: snapshot the current camera color into a temp target
+		Pass
+		{
+			Name "Grab"
+			HLSLPROGRAM
+			#pragma vertex Vert
+			#pragma fragment Frag
 
-        // Pass 0 - Grab: snapshot the current camera color into a temp target
-        // (can't read + write the same target in one draw).
-        Pass
-        {
-            Name "Grab"
-            HLSLPROGRAM
-            #pragma vertex Vert
-            #pragma fragment Frag
+			TEXTURE2D(_CopyBlitTex);
+			SAMPLER(sampler_CopyBlitTex);
 
-            TEXTURE2D(_CopyBlitTex);
-            SAMPLER(sampler_CopyBlitTex);
+			float4 Frag(Varyings i) : SV_Target
+			{
+				return SAMPLE_TEXTURE2D(_CopyBlitTex, sampler_CopyBlitTex, i.uv);
+			}
+			ENDHLSL
+		}
 
-            float4 Frag(Varyings i) : SV_Target
-            {
-                return SAMPLE_TEXTURE2D(_CopyBlitTex, sampler_CopyBlitTex, i.uv);
-            }
-            ENDHLSL
-        }
+		// Pass 1 - Apply: depth-aware (joint-bilateral) upsample of the low-res reflection
+		Pass
+		{
+			Name "Apply"
+			HLSLPROGRAM
+			#pragma vertex Vert
+			#pragma fragment Frag
 
-        // Pass 1 - Apply: composite reflections over the snapshot, write back to camera.
-        Pass
-        {
-            Name "Apply"
-            HLSLPROGRAM
-            #pragma vertex Vert
-            #pragma fragment Frag
-            #pragma multi_compile _ _REFLECTIONS_REPLACE
+			TEXTURE2D(_ReflectionsGrabpass);
+			SAMPLER(sampler_ReflectionsGrabpass);
 
-            TEXTURE2D(_ReflectionsGrabpass);
-            SAMPLER(sampler_ReflectionsGrabpass);
+			TEXTURE2D(_RTXReflectionsTex);
+			SAMPLER(sampler_RTXReflectionsTex);
+			float4 _RTXReflectionsTex_TexelSize;
 
-            TEXTURE2D(_RTXReflectionsTex);
-            SAMPLER(sampler_RTXReflectionsTex);
+			TEXTURE2D(_CameraDepthTexture);
+			SAMPLER(sampler_CameraDepthTexture);
+			SAMPLER(sampler_LinearClamp);
 
-            float4 Frag(Varyings i) : SV_Target
-            {
-                float4 baseColor = SAMPLE_TEXTURE2D(_ReflectionsGrabpass, sampler_ReflectionsGrabpass, i.uv);
-                float4 reflection = SAMPLE_TEXTURE2D(_RTXReflectionsTex, sampler_RTXReflectionsTex, i.uv);
+			float4x4 _InverseProjectionMatrix;
 
-            #ifdef _REFLECTIONS_REPLACE
-                // Mirror-like: replace the surface with the reflection by its strength.
-                baseColor.rgb = lerp(baseColor.rgb, reflection.rgb, saturate(reflection.a));
-            #else
-                // Glossy add-on: reflection added on top, weighted by strength.
-                baseColor.rgb += reflection.rgb * reflection.a;
-            #endif
+			float SceneEuclidDepth(float2 uv)
+			{
+				float raw = SAMPLE_TEXTURE2D(_CameraDepthTexture, sampler_CameraDepthTexture, uv).r;
+				float4 clip = float4(uv * 2.0 - 1.0, raw, 1.0);
+				float4 vp = mul(_InverseProjectionMatrix, clip);
+				return length(vp.xyz / vp.w);
+			}
 
-                return baseColor;
-            }
-            ENDHLSL
-        }
-    }
+			float4 Frag(Varyings i) : SV_Target
+			{
+				float4 baseColor = SAMPLE_TEXTURE2D(_ReflectionsGrabpass, sampler_ReflectionsGrabpass, i.uv);
+
+				float sceneD = SceneEuclidDepth(i.uv);
+				float tol = max(0.1, 0.1 * sceneD);
+
+				float2 texel = _RTXReflectionsTex_TexelSize.xy;
+				float4 sum = 0.0;
+				float wsum = 0.0;
+
+				// Bilinear taps weighted by depth match at each tap.
+				[unroll] for (int y = 0; y < 2; ++y)
+				[unroll] for (int x = 0; x < 2; ++x)
+				{
+					float2 o = (float2(x, y) - 0.5) * texel;
+					float dTap = SceneEuclidDepth(i.uv + o);
+					float w = saturate(1.0 - abs(dTap - sceneD) / tol);
+					sum += SAMPLE_TEXTURE2D(_RTXReflectionsTex, sampler_LinearClamp, i.uv + o) * w;
+					wsum += w;
+				}
+
+				float4 reflection = (wsum > 1e-4)
+					? sum / wsum
+					: SAMPLE_TEXTURE2D(_RTXReflectionsTex, sampler_LinearClamp, i.uv);
+
+				baseColor.rgb += reflection.rgb * reflection.a;
+
+				return baseColor;
+			}
+			ENDHLSL
+		}
+	}
 }

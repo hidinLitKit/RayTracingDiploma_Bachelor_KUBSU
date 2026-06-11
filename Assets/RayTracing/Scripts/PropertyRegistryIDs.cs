@@ -19,6 +19,9 @@ public static class PropertyRegistryIDs
 	public static readonly int RenderTarget = Shader.PropertyToID("_RenderTarget");
 	public static readonly int TemporallyRendered = Shader.PropertyToID("_TemporallyRendered");
 	public static readonly int CopyBlitTex = Shader.PropertyToID("_CopyBlitTex");
+	public static readonly int RtTime = Shader.PropertyToID("_RtTime");
+	public static readonly int FrameIndex = Shader.PropertyToID("_FrameIndex");
+	public static readonly int PrevViewProjectionMatrix = Shader.PropertyToID("_PrevViewProjectionMatrix");
 }
 
 [System.Flags]

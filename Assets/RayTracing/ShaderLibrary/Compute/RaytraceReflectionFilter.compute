@@ -1,0 +1,55 @@
+#pragma kernel ReflectionBlur
+
+// Depth-aware (bilateral) blur of the low-res reflection buffer.
+Texture2D<float4> _ReflectionTemp;     // rgb = reflection, a = strength
+RWTexture2D<float4> _ReflectionBlurred;
+
+Texture2D _CameraDepthTexture;
+SamplerState sampler_PointClamp;
+
+float4x4 _InverseProjectionMatrix;
+
+int _TextureWidth;
+int _TextureHeight;
+int _ReflBlurRadius;        // blur strength (pixels)
+float _ReflBlurDepthReject; // relative depth tolerance for the bilateral weight
+
+float SceneEuclid(int2 px)
+{
+	float2 uv = (px + 0.5) / float2(_TextureWidth, _TextureHeight);
+	float raw = _CameraDepthTexture.SampleLevel(sampler_PointClamp, uv, 0).r;
+	float4 clip = float4(uv * 2.0 - 1.0, raw, 1.0);
+	float4 vp = mul(_InverseProjectionMatrix, clip);
+	return length(vp.xyz / vp.w);
+}
+
+[numthreads(8, 8, 1)]
+void ReflectionBlur(uint3 id : SV_DispatchThreadID)
+{
+	if ((int)id.x >= _TextureWidth || (int)id.y >= _TextureHeight)
+	{
+		return;
+	}
+
+	int2 px = int2(id.xy);
+	float4 center = _ReflectionTemp[px];
+	float cd = SceneEuclid(px);
+	float tol = max(0.1, _ReflBlurDepthReject * cd);
+
+	float4 sum = 0.0;
+	float wsum = 0.0;
+
+	int r = max(1, _ReflBlurRadius);
+	for (int y = -r; y <= r; ++y)
+	for (int x = -r; x <= r; ++x)
+	{
+		int2 t = clamp(px + int2(x, y), int2(0, 0), int2(_TextureWidth - 1, _TextureHeight - 1));
+		float td = SceneEuclid(t);
+		float w = saturate(1.0 - abs(td - cd) / tol);
+
+		sum += _ReflectionTemp[t] * w;
+		wsum += w;
+	}
+
+	_ReflectionBlurred[px] = wsum > 1e-4 ? sum / wsum : center;
+}

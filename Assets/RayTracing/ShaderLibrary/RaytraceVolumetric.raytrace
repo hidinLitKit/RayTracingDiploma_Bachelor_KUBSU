@@ -1,0 +1,111 @@
+#pragma max_recursion_depth 2
+
+#include "Includes/ShadowsPayload.hlsl"
+
+#define IS_URP_RTX 1
+
+RWTexture2D<float4> _RenderTarget;
+
+Texture2D _CameraDepthTexture;
+SamplerState sampler_CameraDepthTexture;
+
+float4x4 _CameraToWorldMatrix;
+
+int   _StepCount;
+float _Density;
+float _PhaseG;
+float _FogIntensity;
+float _MaxFogDistance;
+float4 _ScatterColor;
+
+float InterleavedGradientNoise(float2 pixel)
+{
+	return frac(52.9829189 * frac(dot(pixel, float2(0.06711056, 0.00583715))));
+}
+
+[shader("raygeneration")]
+void VolumetricRayGen()
+{
+	uint3 dispatchId = DispatchRaysIndex();
+	uint3 dispatchDim = DispatchRaysDimensions();
+
+	float2 texcoord = (dispatchId.xy + float2(0.5, 0.5)) / float2(dispatchDim.x, dispatchDim.y);
+	float2 ndc = texcoord * 2.0 - 1.0;
+
+	float4 clip = float4(ndc, 0.0, 1.0);
+	float4 viewPos = mul(_InverseProjectionMatrix, clip);
+		   viewPos.xyz /= viewPos.w;
+	float3 worldPos = mul(_CameraToWorldMatrix, float4(viewPos.xyz, 1.0)).xyz;
+	float3 worldDir = normalize(worldPos - _WorldSpaceCameraPos);
+
+	float rawDepth = _CameraDepthTexture.SampleLevel(sampler_CameraDepthTexture, texcoord, 0).r;
+	float4 clipD = float4(ndc, rawDepth, 1.0);
+	float4 viewD = mul(_InverseProjectionMatrix, clipD);
+		   viewD.xyz /= viewD.w;
+	float3 worldD = mul(_CameraToWorldMatrix, float4(viewD.xyz, 1.0)).xyz;
+	float sceneDist = length(worldD - _WorldSpaceCameraPos);
+
+	float marchEnd = min(_MaxFogDistance, sceneDist);
+
+	int steps = max(1, _StepCount);
+	float stepSize = marchEnd / steps;
+
+	// Henyey-Greenstein phase is constant along the ray for a directional light.
+	float3 toLight = normalize(_MainLightPosition.xyz);
+	float cosTheta = dot(worldDir, toLight);
+	float g = _PhaseG;
+	float denom = max(1e-4, 1.0 + g * g - 2.0 * g * cosTheta);
+	float phase = (1.0 - g * g) / (4.0 * PI * pow(denom, 1.5));
+
+	// IGN jitter
+	float jitter = InterleavedGradientNoise(float2(dispatchId.xy) + _FrameIndex * 5.588238);
+
+	float transmittance = 1.0;
+	float inscatter = 0.0;
+
+	for (int i = 0; i < steps; ++i)
+	{
+		float t = (i + jitter) * stepSize;
+		if (t >= marchEnd)
+		{
+			break;
+		}
+
+		float3 P = _WorldSpaceCameraPos + worldDir * t;
+
+		ShadowsPayload payload;
+		payload.light = 0.0;
+		payload.rayIntensity = 1.0;
+		payload.rayType = 1.0;
+		payload.blockerDistSum = 0.0;
+		payload.blockerCount = 0.0;
+		payload.penumbra = 0.0;
+		payload.viewDepth = 0.0;
+
+		RayDesc ray;
+		ray.Origin = P;
+		ray.Direction = toLight;
+		ray.TMin = 0.001;
+		ray.TMax = _MaxRayDistance;
+
+		// accept the first blocker and skip closest-hit
+		TraceRay(_RaytracingAccelerationStructure,
+				 RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
+				 _RaytraceAgainstLayers, 0, 1, 0, ray, payload);
+
+		float lit = payload.light; // 1 = reached the sun, 0 = occluded
+
+		inscatter += transmittance * lit * _Density * stepSize;
+		transmittance *= exp(-_Density * stepSize);
+	}
+
+	float3 fog = inscatter * phase * _ScatterColor.rgb * _FogIntensity;
+
+	_RenderTarget[dispatchId.xy] = float4(fog, sceneDist);
+}
+
+[shader("miss")]
+void VolumetricMiss(inout ShadowsPayload payload : SV_RayPayload)
+{
+	payload.light = 1.0; // ray reached the light unoccluded
+}

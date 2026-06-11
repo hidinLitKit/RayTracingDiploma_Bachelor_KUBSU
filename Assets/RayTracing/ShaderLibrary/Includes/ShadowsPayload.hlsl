@@ -12,7 +12,6 @@ struct ShadowsPayload
 };
 
 float _RtShadowBias;
-float _RaySeparation;
 int _ShadowCastCount;
 float _LightAngularRadius; // half-angle of the light cone, radians
 float _ProjScaleY;         // height / (2 * tan(fovY/2)) — world->pixels at unit distance
@@ -34,11 +33,22 @@ float2 ConcentricSampleDisk(float u1, float u2)
 {
 	float ox = 2.0 * u1 - 1.0;
 	float oy = 2.0 * u2 - 1.0;
-	if (ox == 0.0 && oy == 0.0) return float2(0.0, 0.0);
+	if (ox == 0.0 && oy == 0.0)
+	{
+		return float2(0.0, 0.0);
+	}
 
 	float r, theta;
-	if (abs(ox) > abs(oy)) { r = ox; theta = (PI / 4.0) * (oy / ox); }
-	else                   { r = oy; theta = (PI / 2.0) - (PI / 4.0) * (ox / oy); }
+	if (abs(ox) > abs(oy))
+	{
+		r = ox;
+		theta = (PI / 4.0) * (oy / ox);
+	}
+	else
+	{
+		r = oy;
+		theta = (PI / 2.0) - (PI / 4.0) * (ox / oy);
+	}
 
 	return r * float2(cos(theta), sin(theta));
 }
@@ -71,7 +81,9 @@ inline float Cast(float3 rayOrigin, float3 rayDirection, inout ShadowsPayload pa
 	BuildTangentBasis(rayDirection, tangent, bitangent);
 
 	uint2 pixel = DispatchRaysIndex().xy;
-	uint baseSeed = PcgHash(pixel.x + PcgHash(pixel.y));
+	// Per-frame term so the cone samples differ each frame -> temporal accumulation
+	// converges to more effective samples (lets shadowCastCount drop).
+	uint baseSeed = PcgHash(pixel.x + PcgHash(pixel.y) + (uint)_FrameIndex * 9781u);
 
 	for (int i = 0; i < cast_count; ++i)
 	{

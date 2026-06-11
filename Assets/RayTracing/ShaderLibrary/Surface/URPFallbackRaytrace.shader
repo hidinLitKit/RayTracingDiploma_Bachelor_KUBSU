@@ -22,7 +22,7 @@
 
             HLSLPROGRAM
 
-            #pragma raytracing URP_ClosestHit
+            #pragma raytracing ClosestHit_Reflections
             #include "../Includes/RaytraceReflectionHitPass.hlsl"
 
             ENDHLSL

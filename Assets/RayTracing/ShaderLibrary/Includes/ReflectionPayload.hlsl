@@ -1,23 +1,20 @@
 #include "RaytraceData.hlsl"
 
-// Payload carried along reflection rays.
 struct ReflectionPayload
 {
 	float4 color;            // accumulated reflected radiance; .a = reflection strength (set at the primary surface)
-	float  bounceCounter;    // 0 = primary camera ray, 1 = first reflection, ...
+	float  bounceCounter;    // 0 = primary camera ray, 1 = first reflection, etc.
 	float  rayIntensity;     // weight of the current contribution (driven by gloss)
 	int    reflectionRayType; // 0 = reflection ray, 1 = shadow probe inside a reflection
+	float  reflRayT;         // unfolded reflection path length (surface + first reflected hit), for temporal reprojection
 };
 
-// Quality knobs, set from RaytraceReflectionsPass.
-float _MaxReflectionBounces; // recursion cap for reflections
-float _BounceFalloff;        // 1 / (bounces + 1); fades skybox with depth
-int   _MaxRoughnessRays;     // max rays in the glossy cone
-float _ShadowBounceCap;      // stop casting shadow probes past this bounce
+float _MaxReflectionBounces;
+float _BounceFalloff;
+int   _MaxRoughnessRays;
+float _ShadowBounceCap;
 
-// Returns 1 if the point is lit by the main light, 0 if occluded.
-// Cheap: a single ray toward the directional light. reflectionRayType = 1 tells the
-// closest-hit "this is only a visibility probe, don't shade".
+
 inline float GetShadowAttenuation(float3 worldPos, float bounceCount)
 {
 	if (bounceCount >= _ShadowBounceCap)
@@ -37,18 +34,19 @@ inline float GetShadowAttenuation(float3 worldPos, float bounceCount)
 	probe.rayIntensity = 1.0;
 	probe.reflectionRayType = 1;
 
-	TraceRay(_RaytracingAccelerationStructure, _RayFlags, _RaytraceAgainstLayers, 0, 1, 0, ray, probe);
+	TraceRay(_RaytracingAccelerationStructure,
+		RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
+		_RaytraceAgainstLayers, 0, 1, 0, ray, probe);
 
-	// miss shader writes a = 1 ("reached the light"); a hit returns leaving a = 0.
 	return probe.color.a;
 }
 
-// Spawns reflection rays in a cone whose width grows with roughness, then averages
-// them. A mirror casts 1 sharp ray; a rough surface casts many spread rays (blur).
+
 // Recurses through the closest-hit up to _MaxReflectionBounces.
 inline void BounceRay(float3 worldPosition, float3 rayDirection, float gloss, float metallic, inout ReflectionPayload payload)
 {
 	payload.bounceCounter += 1.0;
+	bool recordHit = (payload.bounceCounter == 1.0);
 
 	if (payload.bounceCounter < _MaxReflectionBounces && gloss > 0.0125)
 	{
@@ -73,6 +71,11 @@ inline void BounceRay(float3 worldPosition, float3 rayDirection, float gloss, fl
 			TraceRay(_RaytracingAccelerationStructure, _RayFlags, _RaytraceAgainstLayers, 0, 1, 0, ray, bounce);
 
 			averageColor += bounce.color;
+
+			if (recordHit && i == 0)
+			{
+				payload.reflRayT = bounce.reflRayT;
+			}
 		}
 
 		averageColor /= ray_count;

@@ -5,7 +5,7 @@
 
 TEXTURE2D(_CameraDepthTexture);
 Texture2D<float4> _ShadowmapTemp; // R = visibility, G = penumbra (pixels), B = view depth
-RWTexture2D<float> _ShadowMap;
+RWTexture2D<float2> _ShadowMap;   // R = shadow factor, G = view depth (for depth-aware upsample)
 
 SamplerComparisonState _LinearClampCompare;
 SamplerState _LinearClamp;
@@ -66,34 +66,31 @@ float SampleShadowMap_3x3(int2 uv)
 	return shadow;
 }
 
-// PCSS PCF: kernel radius is driven per-pixel by the estimated penumbra width,
-// with a bilateral (depth-aware) weight so the blur does not bleed across
-// geometry edges / object-ground intersections.
+// kernel radius is driven per-pixel by the estimated penumbra width,
+// with a bilateral (depth-aware) weight so the blur does not bleed across edges
 float SampleShadowMap_Variable(int2 uv)
 {
-	// Penumbra radius (pixels) estimated by the ray-traced blocker search.
 	float penumbra = SamplePenumbra(uv);
-	int iwidth = clamp((int)round(penumbra), 1, _PcssMaxRadius);
+	int iWidth = clamp((int)round(penumbra), 1, _PcssMaxRadius);
 
 	float centerDepth = SampleDepth(uv);
-	// Allowed depth difference scales with distance (depth precision is relative).
 	float depthTolerance = max(1e-4, _DepthRejectScale * centerDepth);
 
 	float shadow = 0.0;
 	float counter = 0.0;
 
-	for (int x = -iwidth; x <= iwidth; ++x)
-	for (int y = -iwidth; y <= iwidth; ++y)
+	for (int x = -iWidth; x <= iWidth; x++)
+	for (int y = -iWidth; y <= iWidth; y++)
 	{
-		// Round kernel
-		if (x * x + y * y > iwidth * iwidth)
+		// round kernel
+		if (x * x + y * y > iWidth * iWidth)
 		{
 			continue;
 		}
 
 		int2 tap = uv + int2(x, y);
 
-		// Bilateral weight: drop taps lying on a different surface (depth jump).
+		// depth estimate
 		float tapDepth = SampleDepth(tap);
 		float w = saturate(1.0 - abs(tapDepth - centerDepth) / depthTolerance);
 
@@ -101,7 +98,7 @@ float SampleShadowMap_Variable(int2 uv)
 		counter += w;
 	}
 
-	// Center tap always contributes (w == 1) so counter is never zero.
+	// center tap always contributes (w == 1) so counter is never zero.
 	shadow /= max(1.0, counter);
 
 	return shadow;
@@ -123,9 +120,9 @@ void SoftShadows(int3 id : SV_DispatchThreadID)
 
 	shadows = 1.0 - shadows;
 	shadows *= _ShadowStrength;
-	shadows = 1.0 - shadows; 
+	shadows = 1.0 - shadows;
 
-	_ShadowMap[id.xy] = shadows;
+	_ShadowMap[id.xy] = float2(shadows, SampleDepth(id.xy));
 }
 
 [numthreads(32, 32, 1)]
@@ -143,5 +140,5 @@ void HardShadows(int3 id : SV_DispatchThreadID)
 	shadows *= _ShadowStrength;
 	shadows = 1.0 - shadows;
 
-	_ShadowMap[id.xy] = shadows;
+	_ShadowMap[id.xy] = float2(shadows, SampleDepth(uv));
 }

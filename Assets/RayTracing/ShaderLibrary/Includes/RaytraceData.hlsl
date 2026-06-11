@@ -15,6 +15,7 @@ float4x4 _InverseProjectionMatrix;
 uint _RayFlags;
 uint _RaytraceAgainstLayers;
 float _MaxRayDistance;
+float _FrameIndex; // animates per-frame jitter so temporal accumulation converges
 
 struct AttributeData
 {

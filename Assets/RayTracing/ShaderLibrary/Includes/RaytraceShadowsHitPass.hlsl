@@ -33,6 +33,10 @@ float4 _BaseColor;
 float _Cutoff;
 float _AlphaClip;
 
+// Any-hit cost controls (shared by shadow + volumetric occlusion rays).
+float _AnyHitFarCutout; // occlusion rays accept foliage past this distance as opaque (0 = always test)
+float _AnyHitAlphaMip;  // mip level for the cutout alpha sample (0 = full res)
+
 float GetRaytracedSurfaceAlpha(AttributeData attributes)
 {
 	Vertex v0, v1, v2;
@@ -43,7 +47,7 @@ float GetRaytracedSurfaceAlpha(AttributeData attributes)
 	float2 texcoord = INTERPOLATE_RAYTRACING_ATTRIBUTE(v0.texcoord, v1.texcoord, v2.texcoord, barycentricCoords);
 
 	float2 uvMainTex = TRANSFORM_TEX(texcoord, _BaseMap);
-	return _BaseMap.SampleLevel(sampler_BaseMap, uvMainTex, 0).a * _BaseColor.a;
+	return _BaseMap.SampleLevel(sampler_BaseMap, uvMainTex, _AnyHitAlphaMip).a * _BaseColor.a;
 }
 
 [shader("anyhit")]
@@ -51,6 +55,11 @@ void AnyHit_Shadows(inout ShadowsPayload payload : SV_RayPayload, AttributeData 
 {
 	if (_AlphaClip > 0.5)
 	{
+		if (payload.rayType > 0.5 && _AnyHitFarCutout > 0.0 && RayTCurrent() > _AnyHitFarCutout)
+		{
+			return;
+		}
+
 		float alpha = GetRaytracedSurfaceAlpha(attributes);
 		if (alpha < _Cutoff)
 		{
@@ -92,11 +101,7 @@ void ClosestHit_Shadows(inout ShadowsPayload payload : SV_RayPayload, AttributeD
 			alpha = step(_Cutoff, color.a);
 		}
 
-		// Opacity-weighted: transparent fragments let part of the light through ...
 		payload.light += payload.rayIntensity * (1.0 - alpha);
-
-		// ... and contribute to the blocker search proportionally to how opaque they are.
-		// RayTCurrent() is exactly the receiver->blocker distance (rays start at the receiver).
 		payload.blockerDistSum += RayTCurrent() * alpha;
 		payload.blockerCount   += alpha;
 		return;
@@ -106,13 +111,10 @@ void ClosestHit_Shadows(inout ShadowsPayload payload : SV_RayPayload, AttributeD
 	float3 rayDirection = normalize(_MainLightPosition.xyz);
 	geometricNormalWS = normalize(geometricNormalWS);
 
-	// Camera->receiver distance: drives the world->pixel penumbra scale and the
-	// bilateral (depth-aware) blur in the filtering compute pass.
 	float receiverDist = distance(worldPosition, _WorldSpaceCameraPos);
 	payload.viewDepth = receiverDist;
 
-	// Orient the geometric normal toward the camera so the bias offset pushes the
-	// shadow-ray origin off the visible surface, regardless of triangle winding.
+	// orient the geometric normal toward the camera
 	if (dot(geometricNormalWS, WorldRayDirection()) > 0.0)
 	{
 		geometricNormalWS = -geometricNormalWS;
@@ -123,7 +125,7 @@ void ClosestHit_Shadows(inout ShadowsPayload payload : SV_RayPayload, AttributeD
 	Cast(rayPosition, rayDirection, payload);
 
 	// PCSS penumbra estimation at the receiver.
-	// Directional light: penumbra width grows with the receiver->blocker distance.
+	// penumbra width grows with the receiver->blocker distance.
 	if (payload.blockerCount > 0.0)
 	{
 		float avgBlockerDist = payload.blockerDistSum / payload.blockerCount;

@@ -6,8 +6,12 @@
 #define IS_URP_RTX 1
 
 RWTexture2D<float4> _RenderTarget; // RGB = reflected radiance, A = reflection strength
+// Temporal reprojection aux: RG = previous-frame UV, B = unfolded reflection path length,
+// A = validity (1 if reprojectable). Consumed by the TemporalResolveReflection kernel.
+RWTexture2D<float4> _ReflectionReproj;
 SamplerState _LinearClamp;
 float4x4 _CameraToWorldMatrix;
+float4x4 _PrevViewProjectionMatrix; // previous-frame view-projection (set by RaytracePreparePass)
 
 TextureCube<float4> SkyboxTex;
 SamplerState _LinearRepeat;
@@ -39,10 +43,34 @@ void ReflectionRayGeneration()
 	payload.bounceCounter = 0;
 	payload.rayIntensity = 1.0;
 	payload.reflectionRayType = 0;
+	payload.reflRayT = 0.0;
 
 	TraceRay(_RaytracingAccelerationStructure, _RayFlags, _RaytraceAgainstLayers, 0, 1, 0, ray, payload);
 
 	_RenderTarget[dispatchId.xy] = payload.color;
+
+	// --- Temporal reprojection ------------------------------------------------
+	// Treat the reflection as virtual geometry along the unfolded view ray, then project
+	// it with the PREVIOUS frame's view-projection to find where it appeared last frame.
+	// Exact for a planar mirror (flat water); approximate for curved reflectors.
+	float2 prevUV = float2(0.0, 0.0);
+	float valid = 0.0;
+
+	if (payload.color.a > 1e-4 && payload.reflRayT > 0.0) // only where there is an actual reflection
+	{
+		float3 virtualPos = ray.Origin + worldDirection * payload.reflRayT;
+		float4 prevClip = mul(_PrevViewProjectionMatrix, float4(virtualPos, 1.0));
+		if (prevClip.w > 1e-5)
+		{
+			prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+			if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0)
+			{
+				valid = 1.0;
+			}
+		}
+	}
+
+	_ReflectionReproj[dispatchId.xy] = float4(prevUV, payload.reflRayT, valid);
 }
 
 [shader("miss")]
@@ -53,6 +81,13 @@ void ReflectionMiss(inout ReflectionPayload payload : SV_RayPayload)
 	{
 		payload.color = float4(0.0, 0.0, 0.0, 1.0);
 		return;
+	}
+
+	// First reflected ray escaped to the sky: record a far path length so the temporal
+	// reprojection treats the sky reflection as distant (stable) geometry.
+	if (payload.bounceCounter == 1.0)
+	{
+		payload.reflRayT = _MaxRayDistance;
 	}
 
 	// A reflection ray that escaped the scene samples the skybox cubemap, faded with depth.

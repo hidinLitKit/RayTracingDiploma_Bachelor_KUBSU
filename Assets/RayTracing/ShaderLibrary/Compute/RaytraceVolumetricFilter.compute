@@ -1,0 +1,47 @@
+#pragma kernel VolumetricBlur
+
+// Depth-aware (bilateral) blur of the low-res volumetric buffer.
+// Fog is low-frequency, so blurring removes the ray-march noise almost losslessly,
+// while the depth weight keeps shafts from bleeding across object silhouettes.
+
+Texture2D<float4> _VolumetricTemp;     // rgb = in-scattered fog, a = scene depth
+RWTexture2D<float4> _VolumetricBlurred;
+
+int _TextureWidth;
+int _TextureHeight;
+int _BlurRadius;
+float _BlurDepthReject; // max relative depth difference for a tap to count
+
+[numthreads(8, 8, 1)]
+void VolumetricBlur(uint3 id : SV_DispatchThreadID)
+{
+	if ((int)id.x >= _TextureWidth || (int)id.y >= _TextureHeight)
+	{
+		return;
+	}
+
+	int2 uv = int2(id.xy);
+	float4 center = _VolumetricTemp[uv];
+	float centerDepth = center.a;
+	float depthTol = max(1e-3, _BlurDepthReject * centerDepth);
+
+	float3 sum = 0.0;
+	float wsum = 0.0;
+
+	int r = max(1, _BlurRadius);
+	for (int y = -r; y <= r; ++y)
+	for (int x = -r; x <= r; ++x)
+	{
+		int2 t = clamp(uv + int2(x, y), int2(0, 0), int2(_TextureWidth - 1, _TextureHeight - 1));
+		float4 s = _VolumetricTemp[t];
+
+		// Drop taps that sit on a different surface (depth jump).
+		float w = saturate(1.0 - abs(s.a - centerDepth) / depthTol);
+
+		sum += s.rgb * w;
+		wsum += w;
+	}
+
+	float3 result = wsum > 0.0 ? sum / wsum : center.rgb;
+	_VolumetricBlurred[id.xy] = float4(result, centerDepth);
+}

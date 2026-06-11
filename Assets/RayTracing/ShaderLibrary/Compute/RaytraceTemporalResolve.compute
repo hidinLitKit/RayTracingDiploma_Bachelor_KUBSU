@@ -1,0 +1,188 @@
+#pragma kernel TemporalResolve
+#pragma kernel TemporalResolveShadow
+#pragma kernel TemporalResolveReflection
+
+Texture2D<float4> _CurrentTex;
+Texture2D<float4> _HistoryTex;
+SamplerState sampler_LinearClamp;
+RWTexture2D<float4> _AccumTex;
+
+// Reflection-only resources.
+Texture2D<float4> _ReflReprojTex;    // rg = prevUV, b = path length, a = validity (from raygen)
+RWTexture2D<float4> _ResolvedTex;   // composite source: rgb = accumulated color, a = strength
+
+int _TextureWidth;
+int _TextureHeight;
+float _TemporalAlpha;        // weight of the current frame (1 = no history)
+float _TemporalDepthReject; // relative depth tolerance for reusing history (0 = off)
+
+float4x4 _InverseProjectionMatrix;
+float4x4 _CameraToWorldMatrix;
+float4x4 _PrevViewProjectionMatrix;
+float3 _WorldSpaceCameraPos;
+
+// Reproject this pixel (at euclidean distance curDepth) into the previous frame.
+void ComputeReprojection(int2 px, float curDepth, out float2 prevUV, out float prevDepthW)
+{
+	float2 texcoord = (px + 0.5) / float2(_TextureWidth, _TextureHeight);
+	float2 ndc = texcoord * 2.0 - 1.0;
+	float4 clip = float4(ndc, 0.0, 1.0);
+	float4 vpos = mul(_InverseProjectionMatrix, clip); vpos.xyz /= vpos.w;
+	float3 worldDir = normalize(mul(_CameraToWorldMatrix, float4(vpos.xyz, 1.0)).xyz - _WorldSpaceCameraPos);
+	float3 worldPos = _WorldSpaceCameraPos + worldDir * curDepth;
+
+	float4 prevClip = mul(_PrevViewProjectionMatrix, float4(worldPos, 1.0));
+	prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+	prevDepthW = prevClip.w;
+}
+
+bool Disoccluded(float2 prevUV)
+{
+	return prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0;
+}
+
+// fog: blend rgb, depth in a
+[numthreads(8, 8, 1)]
+void TemporalResolve(uint3 id : SV_DispatchThreadID)
+{
+	if ((int)id.x >= _TextureWidth || (int)id.y >= _TextureHeight)
+	{
+		return;
+	}
+
+	int2 px = int2(id.xy);
+	float4 current = _CurrentTex[px];
+	float curDepth = current.a;
+
+	float2 prevUV; float prevDepthW;
+	ComputeReprojection(px, curDepth, prevUV, prevDepthW);
+
+	float alpha = saturate(_TemporalAlpha);
+	if (Disoccluded(prevUV))
+	{
+		alpha = 1.0;
+	}
+
+	float4 history = _HistoryTex.SampleLevel(sampler_LinearClamp, prevUV, 0);
+
+	if (_TemporalDepthReject > 0.0 && abs(prevDepthW - history.a) > _TemporalDepthReject * max(history.a, 1e-3))
+	{
+		alpha = 1.0;
+	}
+
+	float3 mn = current.rgb;
+	float3 mx = current.rgb;
+	[unroll] for (int y = -1; y <= 1; y++)
+	[unroll] for (int x = -1; x <= 1; x++)
+	{
+		int2 t = clamp(px + int2(x, y), int2(0, 0), int2(_TextureWidth - 1, _TextureHeight - 1));
+		float3 s = _CurrentTex[t].rgb;
+		mn = min(mn, s);
+		mx = max(mx, s);
+	}
+	history.rgb = clamp(history.rgb, mn, mx);
+
+	float4 accumulated;
+	accumulated.rgb = lerp(history.rgb, current.rgb, alpha);
+	accumulated.a = curDepth;
+	_AccumTex[px] = accumulated;
+}
+
+// shadows: blend visibility (r) + penumbra (g), depth in b
+[numthreads(8, 8, 1)]
+void TemporalResolveShadow(uint3 id : SV_DispatchThreadID)
+{
+	if ((int)id.x >= _TextureWidth || (int)id.y >= _TextureHeight)
+	{
+		return;
+	}
+
+	int2 px = int2(id.xy);
+	float4 current = _CurrentTex[px];
+	float curDepth = current.b;
+
+	float2 prevUV;
+	float prevDepthW;
+	ComputeReprojection(px, curDepth, prevUV, prevDepthW);
+
+	float alpha = saturate(_TemporalAlpha);
+	if (Disoccluded(prevUV))
+	{
+		alpha = 1.0;
+	}
+
+	float4 history = _HistoryTex.SampleLevel(sampler_LinearClamp, prevUV, 0);
+
+	if (_TemporalDepthReject > 0.0 && abs(prevDepthW - history.b) > _TemporalDepthReject * max(history.b, 1e-3))
+	{
+		alpha = 1.0;
+	}
+
+	// clamp visibility to the current 3x3 range
+	float mn = current.r;
+	float mx = current.r;
+	[unroll] for (int y = -1; y <= 1; y++)
+	[unroll] for (int x = -1; x <= 1; x++)
+	{
+		int2 t = clamp(px + int2(x, y), int2(0, 0), int2(_TextureWidth - 1, _TextureHeight - 1));
+		float s = _CurrentTex[t].r;
+		mn = min(mn, s);
+		mx = max(mx, s);
+	}
+	float clampedHistVis = clamp(history.r, mn, mx);
+
+	float4 accumulated;
+	accumulated.r = lerp(clampedHistVis, current.r, alpha); // visibility
+	accumulated.g = lerp(history.g, current.g, alpha);      // penumbra
+	accumulated.b = curDepth;                               // keep current depth
+	accumulated.a = 0.0;
+	_AccumTex[px] = accumulated;
+}
+
+// reflections: reprojection from the raygen aux, validated by path length
+[numthreads(8, 8, 1)]
+void TemporalResolveReflection(uint3 id : SV_DispatchThreadID)
+{
+	if ((int)id.x >= _TextureWidth || (int)id.y >= _TextureHeight)
+	{
+		return;
+	}
+
+	int2 px = int2(id.xy);
+	float4 current = _CurrentTex[px];     // rgb = color, a = strength
+	float4 reproj  = _ReflReprojTex[px];  // rg = prevUV, b = path, a = valid
+	float2 prevUV = reproj.xy;
+	float curPath = reproj.b;
+
+	float alpha = saturate(_TemporalAlpha);
+	if (reproj.a < 0.5 || Disoccluded(prevUV))
+	{
+		alpha = 1.0;
+	}
+
+	float4 history = _HistoryTex.SampleLevel(sampler_LinearClamp, prevUV, 0); // rgb = accum, a = path
+
+	// reflected content changed  -> drop history.
+	if (_TemporalDepthReject > 0.0 && abs(curPath - history.a) > _TemporalDepthReject * max(history.a, 1e-3))
+	{
+		alpha = 1.0;
+	}
+
+	// neighborhood clamp on color
+	float3 mn = current.rgb;
+	float3 mx = current.rgb;
+	[unroll] for (int y = -1; y <= 1; y++)
+	[unroll] for (int x = -1; x <= 1; x++)
+	{
+		int2 t = clamp(px + int2(x, y), int2(0, 0), int2(_TextureWidth - 1, _TextureHeight - 1));
+		float3 s = _CurrentTex[t].rgb;
+		mn = min(mn, s);
+		mx = max(mx, s);
+	}
+	history.rgb = clamp(history.rgb, mn, mx);
+
+	float3 accum = lerp(history.rgb, current.rgb, alpha);
+
+	_AccumTex[px]    = float4(accum, curPath);     // -> next frame's history
+	_ResolvedTex[px] = float4(accum, current.a);   // -> composite (strength preserved)
+}

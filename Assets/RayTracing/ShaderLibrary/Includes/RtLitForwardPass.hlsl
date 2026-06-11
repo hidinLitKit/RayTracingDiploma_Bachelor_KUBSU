@@ -7,13 +7,33 @@
 #include "Packages/com.unity.render-pipelines.universal/Shaders/LitForwardPass.hlsl"
 
 // Filtered ray-traced shadow map, bound globally by RaytraceShadowsPass.
-// R = shadow factor in [0,1] (1 = lit, 0 = fully shadowed, _ShadowStrength already applied).
+// R = shadow factor in [0,1] (1 = lit), G = view depth (euclidean dist from camera).
 TEXTURE2D(_RaytracingShadowMap);
+float4 _RaytracingShadowMap_TexelSize;
 
-half SampleRtShadow(float2 screenUV)
+// Depth-aware (bilateral) upsample of the low-res shadow map.
+half SampleRtShadow(float2 screenUV, float3 positionWS)
 {
-    // sampler_LinearClamp is an engine-recognized inline sampler (linear, clamp).
-    return SAMPLE_TEXTURE2D(_RaytracingShadowMap, sampler_LinearClamp, screenUV).r;
+    float fragDepth = distance(positionWS, _WorldSpaceCameraPos);
+    float2 texel = _RaytracingShadowMap_TexelSize.xy;
+    float tol = max(0.1, 0.1 * fragDepth);
+
+    float sum = 0.0;
+    float wsum = 0.0;
+
+    [unroll] for (int y = 0; y < 2; ++y)
+    [unroll] for (int x = 0; x < 2; ++x)
+    {
+        float2 o = (float2(x, y) - 0.5) * texel;
+        float2 s = SAMPLE_TEXTURE2D(_RaytracingShadowMap, sampler_LinearClamp, screenUV + o).rg;
+        float w = saturate(1.0 - abs(s.g - fragDepth) / tol);
+        sum += s.r * w;
+        wsum += w;
+    }
+
+    return (wsum > 1e-4)
+        ? sum / wsum
+        : SAMPLE_TEXTURE2D(_RaytracingShadowMap, sampler_LinearClamp, screenUV).r;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,10 +68,6 @@ half4 UniversalFragmentPBR_RtShadow(InputData inputData, SurfaceData surfaceData
     uint meshRenderingLayers = GetMeshRenderingLayer();
 
     // >>> Ray-traced shadow injection.
-    // Build the main light WITHOUT URP's shadowmap sampling: the pipeline asset has
-    // main-light shadows enabled, and GetMainLight(inputData, ...) would sample the
-    // cascaded shadowmap and double up with our RT shadow. Here the ray-traced shadow
-    // is the SOLE main-light shadow term and touches only this directional light;
     // ambient / GI / additional lights are unaffected.
     Light mainLight = GetMainLight();
 #if !defined(_RECEIVE_SHADOWS_OFF)
@@ -161,7 +177,7 @@ void LitPassFragmentRT(
 
     InitializeBakedGIData(input, inputData);
 
-    half rtShadow = SampleRtShadow(inputData.normalizedScreenSpaceUV);
+    half rtShadow = SampleRtShadow(inputData.normalizedScreenSpaceUV, inputData.positionWS);
 
     half4 color = UniversalFragmentPBR_RtShadow(inputData, surfaceData, rtShadow);
     color.rgb = MixFog(color.rgb, inputData.fogCoord);

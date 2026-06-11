@@ -16,8 +16,14 @@ public class RaytracePreparePass : ScriptableRenderPass
 		public Matrix4x4[] viewProjectionArray;
 
 		public int raytraceAgainstLayers;
+		public float time;
+		public float frameIndex;
+		public Matrix4x4 prevViewProjection;
 
 	}
+
+	// Held across frames for temporal reprojection.
+	private Matrix4x4 m_prevViewProjection = Matrix4x4.identity;
 
 	public RaytracePreparePass(RenderPassEvent passEvent)
 	{
@@ -36,6 +42,10 @@ public class RaytracePreparePass : ScriptableRenderPass
 		using (var builder = renderGraph.AddUnsafePass<PassData>("RayTracePreparePass", out var passData))
 		{
 			FillPassData(passData, cameraData);
+
+			// Previous-frame VP for temporal reprojection (this frame uses last frame's).
+			passData.prevViewProjection = m_prevViewProjection;
+			m_prevViewProjection = passData.viewProjection;
 
 			builder.AllowPassCulling(false);
 			builder.AllowGlobalStateModification(true);
@@ -63,6 +73,8 @@ public class RaytracePreparePass : ScriptableRenderPass
 		data.worldSpaceCameraPos = camera.transform.position;
 
 		data.raytraceAgainstLayers = RaytraceDataManager.instance.UpdateLayers.value;
+		data.time = Time.timeSinceLevelLoad; // matches URP _Time.y used by the forward water
+		data.frameIndex = Time.frameCount % 1024;
 
 	}
 
@@ -75,5 +87,8 @@ public class RaytracePreparePass : ScriptableRenderPass
 		cmd.SetGlobalMatrix(PropertyRegistryIDs.CameraToWorldMatrix, data.cameraToWorld);
 		cmd.SetGlobalVector(PropertyRegistryIDs.WorldSpaceCameraPos, data.worldSpaceCameraPos);
 		cmd.SetGlobalInt(PropertyRegistryIDs.RaytraceAgainstLayers, data.raytraceAgainstLayers);
+		cmd.SetGlobalFloat(PropertyRegistryIDs.RtTime, data.time);
+		cmd.SetGlobalFloat(PropertyRegistryIDs.FrameIndex, data.frameIndex);
+		cmd.SetGlobalMatrix(PropertyRegistryIDs.PrevViewProjectionMatrix, data.prevViewProjection);
 	}
 }
