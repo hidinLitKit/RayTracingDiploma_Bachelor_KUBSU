@@ -22,5 +22,5 @@ MonoBehaviour:
   volumetricApplyMaterial: {fileID: 2100000, guid: f668c12de015dc147bbe18510dbb2e36, type: 2}
   volumetricBlurCs: {fileID: 7200000, guid: 8290dfbd4fc2d1547a4f409d228d2eb4, type: 3}
   temporalResolveCs: {fileID: 7200000, guid: feee7a3f73aa7824a84f9d0a9c4b53a9, type: 3}
-  anyHitFarCutout: 20
-  anyHitAlphaMip: 1
+  anyHitFarCutout: 5
+  anyHitAlphaMip: 2

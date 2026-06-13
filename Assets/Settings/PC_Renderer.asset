@@ -70,7 +70,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 806b57b237b2a87498f2694f0635a311, type: 3}
   m_Name: RaytraceReflectionsRendererFeature
   m_EditorClassIdentifier: Assembly-CSharp::RaytraceReflectionsRendererFeature
-  m_Active: 0
+  m_Active: 1
   settings:
     rayTraceConfig: {fileID: 11400000, guid: b263747ab31349f42ab2d1da0dcc5b04, type: 2}
     rayFlags: 16
@@ -113,15 +113,15 @@ MonoBehaviour:
   raytraceVolumetricSettings:
     rayTraceConfig: {fileID: 11400000, guid: b263747ab31349f42ab2d1da0dcc5b04, type: 2}
     rayFlags: 16
-    raySpawnScale: 5
+    raySpawnScale: 3
     maxRayDistance: 100
     scatterColor: {r: 0.6037736, g: 0.6031998, b: 0.16233535, a: 1}
-    density: 0.5
+    density: 0.288
     phaseG: 0
-    fogIntensity: 10
-    maxFogDistance: 17
+    fogIntensity: 2.06
+    maxFogDistance: 25
     stepCount: 8
-    blurRadius: 1
+    blurRadius: 0
     blurDepthReject: 0.02
     temporalEnabled: 1
     temporalAlpha: 0.02
@@ -157,7 +157,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 82ad6e9ebc7e4944496be502f9a22e62, type: 3}
   m_Name: RaytraceShadowsRendererFeature
   m_EditorClassIdentifier: Assembly-CSharp::RaytraceShadowsRendererFeature
-  m_Active: 0
+  m_Active: 1
   settings:
     rayTraceConfig: {fileID: 11400000, guid: b263747ab31349f42ab2d1da0dcc5b04, type: 2}
     rayFlags: 0
@@ -167,14 +167,14 @@ MonoBehaviour:
   raytraceShadowsSettings:
     rayTraceConfig: {fileID: 11400000, guid: b263747ab31349f42ab2d1da0dcc5b04, type: 2}
     rayFlags: 16
-    raySpawnScale: 3
+    raySpawnScale: 2
     maxRayDistance: 60
     shadowBias: 0
     shadowStrength: 1
-    shadowCastCount: 8
+    shadowCastCount: 4
     smoothShadows: 1
-    lightAngularRadius: 0.49
-    pcssMaxRadius: 4
+    lightAngularRadius: 2
+    pcssMaxRadius: 15
     pcssDepthRejection: 0.005
     temporalEnabled: 1
     temporalAlpha: 0.02
