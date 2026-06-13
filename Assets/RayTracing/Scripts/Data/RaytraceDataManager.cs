@@ -74,6 +74,7 @@ public class RaytraceDataManager : MonoBehaviour
 			};
 			m_accelerationStructure = new RayTracingAccelerationStructure(settings);
 		}
+		m_accelerationStructure.Build();
 	}
 
 	private void LateUpdate()
