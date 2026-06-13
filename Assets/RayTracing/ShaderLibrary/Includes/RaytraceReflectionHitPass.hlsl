@@ -18,6 +18,14 @@ float _AlphaClip;
 float _AnyHitFarCutout; // accept foliage past this ray distance as opaque (skip the texel test). 0 = always test
 float _AnyHitAlphaMip;  // mip for the cutout alpha sample. 0 = full res
 
+
+float3 ApplyReflectionFog(float3 color, float dist)
+{
+	float f = unity_FogParams.x * dist;
+	float intensity = saturate(exp2(-f * f));
+	return color * intensity;
+}
+
 // Interpolated base-map alpha at the hit, for the cutout test.
 float GetReflectionSurfaceAlpha(AttributeData attributes)
 {
@@ -112,6 +120,7 @@ void ClosestHit_Reflections(inout ReflectionPayload payload : SV_RayPayload, Att
 	if (payload.bounceCounter > 0.0)
 	{
 		float3 lit = ShadeReflectedSurface(albedo, worldNormal, worldPosition, payload.bounceCounter);
+		lit = ApplyReflectionFog(lit, RayTCurrent());
 		payload.color.rgb += lit * payload.rayIntensity;
 	}
 

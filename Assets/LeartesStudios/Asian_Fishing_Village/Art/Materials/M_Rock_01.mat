@@ -173,7 +173,7 @@ Material:
     - _Rock_Roughness_Max: 1
     - _Rock_Roughness_Min: 0
     - _Rock_Size_Texture: 256
-    - _Smoothness: 0.5
+    - _Smoothness: 0.173
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1

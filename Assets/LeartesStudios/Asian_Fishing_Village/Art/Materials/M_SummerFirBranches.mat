@@ -210,7 +210,7 @@ Material:
     - _Roughness: 64.4
     - _SSS_Int: 0.8
     - _Saturation: 1.59
-    - _Smoothness: 1
+    - _Smoothness: 0.721
     - _SmoothnessTextureChannel: 0
     - _Snow_1: 1
     - _Snow_Rough: 0

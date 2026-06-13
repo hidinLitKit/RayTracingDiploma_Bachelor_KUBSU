@@ -80,13 +80,13 @@ MonoBehaviour:
   raytraceReflectionsSettings:
     rayTraceConfig: {fileID: 11400000, guid: b263747ab31349f42ab2d1da0dcc5b04, type: 2}
     rayFlags: 16
-    raySpawnScale: 2
-    maxRayDistance: 81
+    raySpawnScale: 1
+    maxRayDistance: 249
     skybox: {fileID: 8900000, guid: 8a293ce833d584fc98516e0e74f495a4, type: 3}
     maxBounces: 2
     maxRoughnessRays: 4
     shadowBounceCap: 2.12
-    blurRadius: 1
+    blurRadius: 0
     blurDepthReject: 0.02
     temporalEnabled: 1
     temporalAlpha: 0.209
@@ -113,7 +113,7 @@ MonoBehaviour:
   raytraceVolumetricSettings:
     rayTraceConfig: {fileID: 11400000, guid: b263747ab31349f42ab2d1da0dcc5b04, type: 2}
     rayFlags: 16
-    raySpawnScale: 3
+    raySpawnScale: 5
     maxRayDistance: 100
     scatterColor: {r: 0.6037736, g: 0.6031998, b: 0.16233535, a: 1}
     density: 0.288
@@ -121,7 +121,7 @@ MonoBehaviour:
     fogIntensity: 2.06
     maxFogDistance: 25
     stepCount: 8
-    blurRadius: 0
+    blurRadius: 4
     blurDepthReject: 0.02
     temporalEnabled: 1
     temporalAlpha: 0.02
@@ -173,7 +173,7 @@ MonoBehaviour:
     shadowStrength: 1
     shadowCastCount: 4
     smoothShadows: 1
-    lightAngularRadius: 2
+    lightAngularRadius: 0.75
     pcssMaxRadius: 15
     pcssDepthRejection: 0.005
     temporalEnabled: 1

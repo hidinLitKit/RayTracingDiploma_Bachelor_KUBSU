@@ -89,7 +89,7 @@ Material:
     - _SecondNormal:
         m_Texture: {fileID: 2800000, guid: 2ed3d41b7c655bf4daa77f71b994f6ed, type: 3}
         m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 1, y: 0}
+        m_Offset: {x: 1, y: 2}
     - _SpecGlossMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -121,18 +121,18 @@ Material:
     - _DepthStrength: 5
     - _DetailAlbedoMapScale: 1
     - _DetailNormalMapScale: 1
-    - _Displacement: 0.025
+    - _Displacement: 0.02
     - _DstBlend: 10
     - _DstBlendAlpha: 0
     - _EnvironmentReflections: 1
     - _GlossMapScale: 1
     - _Glossiness: 0.9227272
     - _GlossyReflections: 1
-    - _Metallic: 0.296
+    - _Metallic: 0.079
     - _Mode: 0
     - _NoiseScale: 20
-    - _NormalStrength: 2
-    - _NormalTiling: 8
+    - _NormalStrength: 0.255
+    - _NormalTiling: 45.03
     - _OcclusionStrength: 1
     - _Parallax: 0.02
     - _QueueOffset: 0
@@ -157,7 +157,7 @@ Material:
     - _NoiseScroll: {r: 0.01, g: 0.01, b: 0, a: 0}
     - _NormalScrollMain: {r: 0.01, g: 0, b: 0, a: 0}
     - _NormalScrollSecond: {r: -0.02, g: 0.01, b: 0, a: 0}
-    - _ShallowColor: {r: 0.101960786, g: 0.09759791, b: 0.078431375, a: 0.30588236}
+    - _ShallowColor: {r: 0.05660379, g: 0.05660379, b: 0.05660379, a: 0.23529412}
     - _SpecColor: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
